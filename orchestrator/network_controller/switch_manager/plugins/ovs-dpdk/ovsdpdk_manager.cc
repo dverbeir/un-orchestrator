@@ -87,6 +87,7 @@ CreateLsiOut *OVSDPDKManager::createLsi(CreateLsiIn cli)
 	
 	for(set<string>::iterator nf = nfs.begin(); nf != nfs.end(); nf++) {
 		nf_t nf_type = nf_types[*nf];
+
 		list<string> nf_ports = cli.getNetworkFunctionsPortNames(*nf);
 		PortsNameIdMap nf_ports_ids;
 		
@@ -96,12 +97,19 @@ CreateLsiOut *OVSDPDKManager::createLsi(CreateLsiIn cli)
 			unsigned int port_id = m_NextPortId++;
 			
 			stringstream sspn;
+// TODO - Support most combinations of NF types at run-time instead of compile-time
 #if defined(ENABLE_KVM_IVSHMEM) || defined(ENABLE_DPDK_PROCESSES)
 			//In these cases we use the rte_rings to exchange packets with the VNFs
 
-			const char* port_type = "dpdkr";
-			sspn << "dpdkr" << nextportname;
-			nextportname++;
+			char* port_type = "dpdkr";
+			if ((nf_type == KVM) || (nf_type == DPDK)) {  // IVSHMEM-based DPDK rings
+				sspn << port_type << nextportname;
+				nextportname++;
+			}
+			else { // This supports e.g. Docker containers
+				port_type = "veth";
+				sspn << dpid << "_" << *nfp;
+			}
 #else
 			//XXX for sure this is vhost user
 			const char* port_type = (nf_type == KVM) ? "dpdkvhostuser" : "veth";  // TODO - dpdkr, dpdkvhostuser, tap, virtio ...
@@ -114,7 +122,7 @@ CreateLsiOut *OVSDPDKManager::createLsi(CreateLsiIn cli)
 			
 			logger(ORCH_DEBUG_INFO, MODULE_NAME, __FILE__, __LINE__, "Network function port '%s' corresponds to the port '%s' on the switch", nfp->c_str(),port_name.c_str());
 
-			logger(ORCH_DEBUG_INFO, MODULE_NAME, __FILE__, __LINE__, " NF port \"%s.%s\" = %d (type=%d)", nf->c_str(), nfp->c_str(), port_id, nf_type);
+			logger(ORCH_DEBUG_INFO, MODULE_NAME, __FILE__, __LINE__, " NF port \"%s.%s\" = %d (nf_type=%d)", nf->c_str(), nfp->c_str(), port_id, nf_type);
 			stringstream cmd_add;
 			cmd_add << CMD_ADD_PORT << " " << dpid << " " << port_name << " " << port_type << " " << port_id;
 			cmd_add << " " << OVS_BASE_SOCK_PATH;
