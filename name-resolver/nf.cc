@@ -25,13 +25,15 @@ Object NF::toJSON()
 	nf["nports"]  = nports;
 	nf["description"] = description;
 	
-	Array impl;
+	Array impl_ary;
 	for(list<Implementation*>::iterator i = implementations.begin(); i != implementations.end();i++)
 	{
-		impl.push_back((*i)->toJSON());
+		Object impl;
+		(*i)->toJSON(impl);
+		impl_ary.push_back(impl);
 	}
 	
-	nf["implementations"] = impl;
+	nf["implementations"] = impl_ary;
 	
 	return nf;
 }

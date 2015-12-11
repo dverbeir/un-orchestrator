@@ -26,11 +26,6 @@
 
 #include "nf.h"
 
-
-#include <libxml/parser.h>
-#include <libxml/tree.h>
-#include <libxml/xmlschemas.h>
-
 #include <json_spirit/json_spirit.h>
 #include <json_spirit/value.h>
 #include <json_spirit/writer.h>
