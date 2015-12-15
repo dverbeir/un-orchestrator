@@ -74,6 +74,28 @@ void DockerImplementation::toJSON(Object& impl)
 
 KVMImplementation::KVMImplementation(nf_t type, xmlNodePtr xmlDetails) : Implementation(type, xmlDetails)
 {
+	for(xmlNodePtr elem = xmlDetails->xmlChildrenNode; elem != NULL; elem = elem->next) {
+
+		if ((elem->type == XML_ELEMENT_NODE) && (!xmlStrcmp(elem->name, (const xmlChar*)"port"))) {
+			xmlChar* attr_id = xmlGetProp(elem, (const xmlChar*)"id");
+			if (attr_id == NULL) {
+				throw string("Missing port id attribute for KVM NF implementation");
+			}
+			int port_id = atoi((char *)attr_id);
+
+			xmlChar* attr_type = xmlGetProp(elem, (const xmlChar*)"type");
+			if (attr_type == NULL) {
+				throw string("Missing port type attribute for KVM NF implementation");
+			}
+
+			logger(ORCH_DEBUG, MODULE_NAME, __FILE__, __LINE__, "\t\tport[%d] type=%s", port_id, attr_type);
+
+			Port p;
+			p.id = port_id;
+			p.type = (char *)attr_type;
+			ports.push_back(p);
+		}
+	}
 }
 
 void KVMImplementation::toJSON(Object& impl)
@@ -81,4 +103,13 @@ void KVMImplementation::toJSON(Object& impl)
 	Implementation::toJSON(impl);
 
 	impl["type"] = "kvm";
+
+	Array ports_ary;
+	for(PortList::iterator it = ports.begin(); it != ports.end(); it++) {
+		Object port;
+		port["id"] = (*it).id;
+		port["type"] = (*it).type;
+		ports_ary.push_back(port);
+	}
+	impl["ports"] = ports_ary;
 }

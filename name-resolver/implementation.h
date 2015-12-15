@@ -57,6 +57,13 @@ public:
 	virtual void toJSON(Object& impl);
 
 private:
+	struct Port {
+		int id;
+		std::string type;
+	};
+	typedef std::vector<Port> PortList;
+
+	PortList ports;
 };
 
 class DockerImplementation : public Implementation

@@ -214,42 +214,89 @@ bool ComputeController::parseAnswer(string answer, string nf)
 			    	string uri;
 					string cores;
 					string location;
+					std::vector<PortType> port_types;
 
-					for( Object::const_iterator im = implementation.begin(); im != implementation.end(); ++im )
+					for( Object::const_iterator impl_el = implementation.begin(); impl_el != implementation.end(); ++impl_el )
 					{
-				 	    const string& impl_name  = im->first;
-						const Value&  impl_value = im->second;
+				 	    const string& el_name  = impl_el->first;
+						const Value&  el_value = impl_el->second;
 
-						if(impl_name == "type")
+						if(el_name == "type")
 						{
 							foundType = true;
-							type = impl_value.getString();
+							type = el_value.getString();
 							if(!NFType::isValid(type))
 							{
-								logger(ORCH_DEBUG_INFO, MODULE_NAME, __FILE__, __LINE__, "Invalid implementation type \"%s\". Skip it.",type.c_str());
+								logger(ORCH_DEBUG_INFO, MODULE_NAME, __FILE__, __LINE__, "Invalid implementation type \"%s\". Skip it.", type.c_str());
 								//return false;
 								next = true;
 								break;
 							}
 						}
-						else if(impl_name == "uri")
+						else if(el_name == "uri")
 						{
 							foundURI = true;
-							uri = impl_value.getString();
+							uri = el_value.getString();
 						}
-						else if(impl_name == "cores")
+						else if(el_name == "cores")
 						{
 							foundCores = true;
-							cores = impl_value.getString();
+							cores = el_value.getString();
 						}
-						else if(impl_name == "location")
+						else if(el_name == "location")
 						{
 							foundLocation = true;
-							location = impl_value.getString();
+							location = el_value.getString();
+						}
+						else if(el_name == "ports")
+						{
+					    	const Array& ports_array = el_value.getArray();
+					    	logger(ORCH_WARNING, MODULE_NAME, __FILE__, __LINE__, "%d ports in implementation", ports_array.size());
+
+					    	if (ports_array.size() == 0)
+					    	{
+						    	logger(ORCH_WARNING, MODULE_NAME, __FILE__, __LINE__, "Empty ports list in implementation");
+								return false;
+					    	}
+					    	for( unsigned int p = 0; p < ports_array.size(); ++p)
+							{
+								Object port = ports_array[p].getObject();
+								int port_id = -1;
+								PortType port_type = UNDEFINED_PORT;
+
+								for( Object::const_iterator port_el = port.begin(); port_el != port.end(); ++port_el )
+								{
+							 	    const string& pel_name  = port_el->first;
+									const Value&  pel_value = port_el->second;
+									if (pel_name == "id") {
+										port_id = pel_value.getInt();
+									}
+									else if (pel_name == "type") {
+										port_type = portTypeFromString(pel_value.getString());
+									}
+									else {
+										logger(ORCH_WARNING, MODULE_NAME, __FILE__, __LINE__, "Invalid key \"%s\" within an implementation port", pel_name.c_str());
+										return false;
+									}
+								}
+								if (port_id == -1) {
+									logger(ORCH_WARNING, MODULE_NAME, __FILE__, __LINE__, "Missing port \"ïd\" attribute for implementation");
+									return false;
+								}
+								if (port_type == UNDEFINED_PORT) {
+									logger(ORCH_WARNING, MODULE_NAME, __FILE__, __LINE__, "Missing port \"type\" attribute for implementation");
+									return false;
+								}
+								logger(ORCH_DEBUG_INFO, MODULE_NAME, __FILE__, __LINE__, "Port %d id=%d type=%d", p, port_id, port_type);
+
+								if ((size_t)port_id >= port_types.size())
+									port_types.resize(port_id + 1);
+								port_types[port_id] = port_type;
+							}
 						}
 						else
 						{
-							logger(ORCH_WARNING, MODULE_NAME, __FILE__, __LINE__, "Invalid key \"%s\" within an implementation",impl_name.c_str());
+							logger(ORCH_WARNING, MODULE_NAME, __FILE__, __LINE__, "Invalid key \"%s\" within an implementation", el_name.c_str());
 							return false;
 						}
 					}
@@ -280,7 +327,10 @@ bool ComputeController::parseAnswer(string answer, string nf)
 						return false;
 					}
 
-					possibleDescriptions.push_back(new Description(type,uri,cores,location));
+					Description* descr = new Description(type, uri, cores, location, port_types);
+					logger(ORCH_DEBUG_INFO, MODULE_NAME, __FILE__, __LINE__, "Description has %d PortTypes (ref %d)", descr->getPortTypes().size(), port_types.size());
+
+					possibleDescriptions.push_back(descr);
 				}
 		    } //end if(name == "implementations")
 		    else
@@ -322,7 +372,12 @@ bool ComputeController::parseAnswer(string answer, string nf)
 
 		nfs[nf_name] = new_nf;
 
-	}catch(...)
+	}
+	catch (std::runtime_error& e) {
+		logger(ORCH_WARNING, MODULE_NAME, __FILE__, __LINE__, "JSON parse error: %s", e.what());
+		return false;
+	}
+	catch(...)
 	{
 		logger(ORCH_WARNING, MODULE_NAME, __FILE__, __LINE__, "The content does not respect the JSON syntax");
 		return false;

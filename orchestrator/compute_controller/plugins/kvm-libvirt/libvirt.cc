@@ -1,7 +1,9 @@
 #include "libvirt.h"
 #include "libvirt_constants.h"
 
-#ifndef ENABLE_KVM_IVSHMEM
+#include <memory>
+
+#ifndef DIRECT_KVM_IVSHMEM
 	virConnectPtr Libvirt::connection = NULL;
 #else
 	pthread_mutex_t Libvirt::Libvirt_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -9,7 +11,7 @@
 	map<string,string> Libvirt::monitor;
 #endif
 
-#ifndef ENABLE_KVM_IVSHMEM
+#ifndef DIRECT_KVM_IVSHMEM
 void Libvirt::customErrorFunc(void *userdata, virErrorPtr err)
 {
 	logger(ORCH_ERROR, MODULE_NAME, __FILE__, __LINE__, "Failure of libvirt library call:");
@@ -27,14 +29,14 @@ void Libvirt::customErrorFunc(void *userdata, virErrorPtr err)
 
 Libvirt::Libvirt()
 {
-#ifndef ENABLE_KVM_IVSHMEM
+#ifndef DIRECT_KVM_IVSHMEM
 	virSetErrorFunc(NULL, customErrorFunc);
 #endif
 }
 
 Libvirt::~Libvirt()
 {
-#ifndef ENABLE_KVM_IVSHMEM
+#ifndef DIRECT_KVM_IVSHMEM
 	if(connection != NULL)
 		disconnect();
 #endif
@@ -42,7 +44,7 @@ Libvirt::~Libvirt()
 
 bool Libvirt::isSupported()
 {
-#ifndef ENABLE_KVM_IVSHMEM
+#ifndef DIRECT_KVM_IVSHMEM
 	connect();
 
 	if(connection == NULL)
@@ -53,7 +55,7 @@ bool Libvirt::isSupported()
 	return true;
 }
 
-#ifndef ENABLE_KVM_IVSHMEM
+#ifndef DIRECT_KVM_IVSHMEM
 void Libvirt::connect()
 {
 	if(connection != NULL)
@@ -75,7 +77,7 @@ void Libvirt::disconnect()
 }
 #endif
 
-#if not defined(ENABLE_KVM_IVSHMEM)
+#if not defined(DIRECT_KVM_IVSHMEM)
 bool Libvirt::startNF(StartNFIn sni)
 {
 	virDomainPtr dom = NULL;
@@ -223,63 +225,96 @@ bool Libvirt::startNF(StartNFIn sni)
     }
 
 	/* Create XML for VM */
-#ifdef VSWITCH_IMPLEMENTATION_OVSDPDK
-
-	//XXX: userspace vhost is only used in case of ovs-dpdk
-
-	logger(ORCH_DEBUG_INFO, MODULE_NAME, __FILE__, __LINE__, "This function is KVM-USVHOST");
 
 	/* Create NICs */
+	int port_id = 0;
+	IvshmemCmdLineGenerator* ivshmemCmdGenerator = NULL;
+	vector<string> ivshmemCmdElems;
 
-	for(list<string>::iterator pn = namesOfPortsOnTheSwitch.begin(); pn != namesOfPortsOnTheSwitch.end(); pn++)
+	for(list<string>::iterator pn = namesOfPortsOnTheSwitch.begin(); pn != namesOfPortsOnTheSwitch.end(); pn++, port_id++)
 	{
+		const string& port_name = *pn;
 
-		char sock_path[255];
-//		sprintf(sock_path, "%s/%s_%u", OVS_BASE_SOCK_PATH, domain_name, i);
-		sprintf(sock_path, "%s/%s", OVS_BASE_SOCK_PATH, pn->c_str());
+		PortType port_type = description->getPortTypes().at(port_id);
+		logger(ORCH_DEBUG_INFO, MODULE_NAME, __FILE__, __LINE__, "KVM VNF Port %d (%s) is of type %d", port_id, port_name.c_str(), port_type);
 
-		xmlNodePtr ifn = xmlNewChild(devices, NULL, BAD_CAST "interface", NULL);
-	    xmlNewProp(ifn, BAD_CAST "type", BAD_CAST "vhostuser");
+	    if (port_type == USVHOST_PORT) {
+			xmlNodePtr ifn = xmlNewChild(devices, NULL, BAD_CAST "interface", NULL);
+		    xmlNewProp(ifn, BAD_CAST "type", BAD_CAST "vhostuser");
 
-	    xmlNodePtr srcn = xmlNewChild(ifn, NULL, BAD_CAST "source", NULL);
-	    xmlNewProp(srcn, BAD_CAST "type", BAD_CAST "unix");
-	    xmlNewProp(srcn, BAD_CAST "path", BAD_CAST sock_path);
-	    xmlNewProp(srcn, BAD_CAST "mode", BAD_CAST "client");
+		    xmlNodePtr srcn = xmlNewChild(ifn, NULL, BAD_CAST "source", NULL);
+	    	xmlNewProp(srcn, BAD_CAST "dev", BAD_CAST port_name.c_str());
+	    	xmlNewProp(srcn, BAD_CAST "mode", BAD_CAST "passthrough");
 
-	    xmlNodePtr modeln = xmlNewChild(ifn, NULL, BAD_CAST "model", NULL);
-	    xmlNewProp(modeln, BAD_CAST "type", BAD_CAST "virtio");
+		    xmlNodePtr modeln = xmlNewChild(ifn, NULL, BAD_CAST "model", NULL);
+		    xmlNewProp(modeln, BAD_CAST "type", BAD_CAST "virtio");
 
-	    xmlNodePtr drvn = xmlNewChild(ifn, NULL, BAD_CAST "driver", NULL);
-	    xmlNodePtr drv_hostn = xmlNewChild(drvn, NULL, BAD_CAST "host", NULL);
-	    xmlNewProp(drv_hostn, BAD_CAST "csum", BAD_CAST "off");
-	    xmlNewProp(drv_hostn, BAD_CAST "gso", BAD_CAST "off");
-	    xmlNodePtr drv_guestn = xmlNewChild(drvn, NULL, BAD_CAST "guest", NULL);
-	    xmlNewProp(drv_guestn, BAD_CAST "tso4", BAD_CAST "off");
-	    xmlNewProp(drv_guestn, BAD_CAST "tso6", BAD_CAST "off");
-	    xmlNewProp(drv_guestn, BAD_CAST "ecn", BAD_CAST "off");
+		    xmlNodePtr drvn = xmlNewChild(ifn, NULL, BAD_CAST "driver", NULL);
+		    xmlNodePtr drv_hostn = xmlNewChild(drvn, NULL, BAD_CAST "host", NULL);
+		    xmlNewProp(drv_hostn, BAD_CAST "csum", BAD_CAST "off");
+		    xmlNewProp(drv_hostn, BAD_CAST "gso", BAD_CAST "off");
+		    xmlNodePtr drv_guestn = xmlNewChild(drvn, NULL, BAD_CAST "guest", NULL);
+		    xmlNewProp(drv_guestn, BAD_CAST "tso4", BAD_CAST "off");
+		    xmlNewProp(drv_guestn, BAD_CAST "tso6", BAD_CAST "off");
+		    xmlNewProp(drv_guestn, BAD_CAST "ecn", BAD_CAST "off");
+	    }
+	    else if (port_type == IVSHMEM_PORT) {
+    		char cmdline[512];
+	    	if (! ivshmemCmdGenerator) { // Only at first IVSHMEM port
+	    		ivshmemCmdGenerator = new IvshmemCmdLineGenerator();
+
+	    		if(!ivshmemCmdGenerator->get_mempool_cmdline(cmdline, sizeof(cmdline)))
+	    			return false;
+	    		ivshmemCmdElems.push_back(cmdline);
+	    	}
+
+			if (!ivshmemCmdGenerator->get_port_cmdline(port_name.c_str(), cmdline, sizeof(cmdline)))
+				return false;
+			logger(ORCH_DEBUG_INFO, MODULE_NAME, __FILE__, __LINE__, "Command line part for ivshmem '%s'", cmdline);
+    		ivshmemCmdElems.push_back(cmdline);
+	    }
+	    else {
+			xmlNodePtr ifn = xmlNewChild(devices, NULL, BAD_CAST "interface", NULL);
+			xmlNewProp(ifn, BAD_CAST "type", BAD_CAST "direct");
+
+		    xmlNodePtr srcn = xmlNewChild(ifn, NULL, BAD_CAST "source", NULL);
+			ostringstream sock_path_os;
+			sock_path_os << OVS_BASE_SOCK_PATH << port_name;
+		    xmlNewProp(srcn, BAD_CAST "type", BAD_CAST "unix");
+		    xmlNewProp(srcn, BAD_CAST "path", BAD_CAST sock_path_os.str().c_str());
+		    xmlNewProp(srcn, BAD_CAST "mode", BAD_CAST "client");
+
+		    xmlNodePtr modeln = xmlNewChild(ifn, NULL, BAD_CAST "model", NULL);
+		    xmlNewProp(modeln, BAD_CAST "type", BAD_CAST "virtio");
+
+		    xmlNodePtr virt = xmlNewChild(ifn, NULL, BAD_CAST "virtualport", NULL);
+		    xmlNewProp(virt, BAD_CAST "type", BAD_CAST "openvswitch");
+	    }
 	}
-#else
-	logger(ORCH_DEBUG_INFO, MODULE_NAME, __FILE__, __LINE__, "This function is a 'standard process' in KVM");
 
-	/* Create NICs */
-	for(list<string>::iterator pn = namesOfPortsOnTheSwitch.begin(); pn != namesOfPortsOnTheSwitch.end(); pn++)
-	{
-		string port_name = *pn;
+	if (ivshmemCmdGenerator) {
+		delete ivshmemCmdGenerator;
+		ivshmemCmdGenerator = NULL;
 
-		xmlNodePtr ifn = xmlNewChild(devices, NULL, BAD_CAST "interface", NULL);
-	    xmlNewProp(ifn, BAD_CAST "type", BAD_CAST "direct");
-
-	    xmlNodePtr srcn = xmlNewChild(ifn, NULL, BAD_CAST "source", NULL);
-	    xmlNewProp(srcn, BAD_CAST "dev", BAD_CAST port_name.c_str());
-	    xmlNewProp(srcn, BAD_CAST "mode", BAD_CAST "passthrough");
-
-	    xmlNodePtr modeln = xmlNewChild(ifn, NULL, BAD_CAST "model", NULL);
-	    xmlNewProp(modeln, BAD_CAST "type", BAD_CAST "virtio");
-
-	    xmlNodePtr virt = xmlNewChild(ifn, NULL, BAD_CAST "virtualport", NULL);
-	    xmlNewProp(virt, BAD_CAST "type", BAD_CAST "openvswitch");
+		stringstream ivshmemCmdline;
+		if (! ivshmemCmdElems.empty()) {
+			xmlNodePtr rootEl = xmlDocGetRootElement(doc);
+			xmlNodePtr cmdLineEl = xmlNewChild(rootEl, NULL, BAD_CAST "qemu:commandline", NULL);
+			for (vector<string>::iterator it = ivshmemCmdElems.begin(); it != ivshmemCmdElems.end(); ++it) {
+				const char* START_KEY = "-device ";
+				if (it->compare(0, sizeof(START_KEY), START_KEY) == 0) {
+					xmlNodePtr argEl = xmlNewChild(cmdLineEl, NULL, BAD_CAST "qemu:arg", NULL);
+				    xmlNewProp(argEl, BAD_CAST "value", BAD_CAST it->substr(0, sizeof(START_KEY)-1).c_str());
+				    argEl = xmlNewChild(cmdLineEl, NULL, BAD_CAST "qemu:arg", NULL);
+				    xmlNewProp(argEl, BAD_CAST "value", BAD_CAST it->substr(sizeof(START_KEY)).c_str());
+				}
+				else {
+					logger(ORCH_ERROR, MODULE_NAME, __FILE__, __LINE__, "Unexpected result from IVSHMEM command line generation: %s", it->c_str());
+					return false;
+				}
+			}
+		}
 	}
-#endif
 
 	/* Cleanup of XPath data */
 	xmlXPathFreeContext(xpathCtx);
@@ -461,7 +496,7 @@ bool Libvirt::stopNF(StopNFIn sni)
 	char *vm_name = new char[64];
 	sprintf(vm_name, "%" PRIu64 "_%s", sni.getLsiID(), sni.getNfName().c_str());
 
-#ifndef ENABLE_KVM_IVSHMEM
+#ifndef DIRECT_KVM_IVSHMEM
 
 	assert(connection != NULL);
 

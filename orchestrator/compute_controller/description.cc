@@ -1,12 +1,12 @@
 #include "description.h"
 
-Description::Description(nf_t type, string uri, string cores, string location) :
-	type(type), uri(uri), cores(cores), location(location)
+Description::Description(nf_t type, string uri, string cores, string location, std::vector<PortType>& port_types) :
+	type(type), uri(uri), cores(cores), location(location), port_types(port_types)
 {
 }
 
-Description::Description(string type, string uri, string cores, string location) :
-	 uri(uri), cores(cores), location(location)
+Description::Description(string type, string uri, string cores, string location, std::vector<PortType>& port_types) :
+	 uri(uri), cores(cores), location(location), port_types(port_types)
 {
 
 	if(type == "dpdk")
@@ -59,4 +59,14 @@ string Description::getLocation()
 	);
 
 	return location;
+}
+
+PortType portTypeFromString(const std::string& s)
+{
+	if (s.compare("ivshmem") == 0)
+		return IVSHMEM_PORT;
+	else if (s.compare("usvhost") == 0)
+		return USVHOST_PORT;
+
+	return UNDEFINED_PORT;
 }

@@ -38,6 +38,14 @@
 					<xsd:sequence>
 						<xsd:element name="implementation" minOccurs="1" maxOccurs="unbounded">
 							<xsd:complexType>
+								<xsd:sequence>
+									<xsd:element name="port" minOccurs="0" maxOccurs="unbounded">
+										<xsd:complexType>
+											<xsd:attribute name="id" type="xsd:integer" use="required"/>
+											<xsd:attribute name="type" type="xsd:string"/>
+										</xsd:complexType>
+									</xsd:element>	
+								</xsd:sequence>
 								<xsd:attribute ref="type" use="required"/>
 								<xsd:attribute name="uri" type="xsd:string" use="required"/>
 								<xsd:attribute name="cores" type="xsd:string"/> <!-- required for DPDK -->
