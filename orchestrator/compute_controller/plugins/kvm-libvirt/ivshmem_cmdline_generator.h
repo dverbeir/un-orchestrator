@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <pthread.h>
+#include <vector>
+#include <string>
 
 #include "../../../utils/logger.h"
 #include "../../../utils/constants.h"
@@ -43,6 +45,11 @@ public:
 	* @param:	size		Size of the buffer for the command line
 	*/
 	bool get_mempool_cmdline(char * cmdline, int size);
+
+	bool get_single_cmdline(char * cmdline, int size, const std::string& vnf_name, std::vector<std::string>& port_names);
+
+protected:
+	struct rte_mempool * mempool_lookup();
 };
 
 #endif //IVSHMEM_CMDLINE_GENERATOR_H

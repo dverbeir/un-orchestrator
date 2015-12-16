@@ -228,8 +228,7 @@ bool Libvirt::startNF(StartNFIn sni)
 
 	/* Create NICs */
 	int port_id = 0;
-	IvshmemCmdLineGenerator* ivshmemCmdGenerator = NULL;
-	vector<string> ivshmemCmdElems;
+	vector<string> ivshmemPorts;
 
 	for(list<string>::iterator pn = namesOfPortsOnTheSwitch.begin(); pn != namesOfPortsOnTheSwitch.end(); pn++, port_id++)
 	{
@@ -259,19 +258,7 @@ bool Libvirt::startNF(StartNFIn sni)
 		    xmlNewProp(drv_guestn, BAD_CAST "ecn", BAD_CAST "off");
 	    }
 	    else if (port_type == IVSHMEM_PORT) {
-    		char cmdline[512];
-	    	if (! ivshmemCmdGenerator) { // Only at first IVSHMEM port
-	    		ivshmemCmdGenerator = new IvshmemCmdLineGenerator();
-
-	    		if(!ivshmemCmdGenerator->get_mempool_cmdline(cmdline, sizeof(cmdline)))
-	    			return false;
-	    		ivshmemCmdElems.push_back(cmdline);
-	    	}
-
-			if (!ivshmemCmdGenerator->get_port_cmdline(port_name.c_str(), cmdline, sizeof(cmdline)))
-				return false;
-			logger(ORCH_DEBUG_INFO, MODULE_NAME, __FILE__, __LINE__, "Command line part for ivshmem '%s'", cmdline);
-    		ivshmemCmdElems.push_back(cmdline);
+	    	ivshmemPorts.push_back(port_name);
 	    }
 	    else {
 			xmlNodePtr ifn = xmlNewChild(devices, NULL, BAD_CAST "interface", NULL);
@@ -292,11 +279,19 @@ bool Libvirt::startNF(StartNFIn sni)
 	    }
 	}
 
-	if (ivshmemCmdGenerator) {
-		delete ivshmemCmdGenerator;
-		ivshmemCmdGenerator = NULL;
+	if (! ivshmemPorts.empty()) {
+		IvshmemCmdLineGenerator ivshmemCmdGenerator;
 
-		stringstream ivshmemCmdline;
+		char cmdline[512];
+
+    	if(!ivshmemCmdGenerator.get_single_cmdline(cmdline, sizeof(cmdline), domain_name, ivshmemPorts)) {
+    		return false;
+    	}
+
+		logger(ORCH_DEBUG_INFO, MODULE_NAME, __FILE__, __LINE__, "Command line for ivshmem '%s'", cmdline);
+		vector<string> ivshmemCmdElems;
+		ivshmemCmdElems.push_back(cmdline);
+
 		if (! ivshmemCmdElems.empty()) {
 			xmlNodePtr rootEl = xmlDocGetRootElement(doc);
 			xmlNodePtr cmdLineEl = xmlNewChild(rootEl, NULL, BAD_CAST "qemu:commandline", NULL);
