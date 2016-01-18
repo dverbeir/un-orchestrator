@@ -258,6 +258,10 @@ CreateLsiOut* commands::cmd_editconfig_lsi (CreateLsiIn cli, int s){
 	peer1.push_back(peer2);
 	peer.push_back(peer1);
 
+#ifdef ENABLE_OVSDB_DPDK
+	row["datapath_type"] = "netdev";
+#endif
+
     row["other_config"] = peer;
 
     row["protocols"] = of_version;
@@ -630,24 +634,35 @@ void commands::add_port(string p, uint64_t dnumber, bool is_nf_port, int s, Port
 		case DPDKR_PORT:
 			row["type"] = "dpdkr";
 			
-			
+#ifndef ENABLE_OVSDB_DPDK
 			//XXX the next rows have to be removed when this plugin with support OvS-DPDK
 			logger(ORCH_WARNING, OVSDB_MODULE_NAME, __FILE__, __LINE__, "Currently supported by the OvS-DPDK plugin");
 			assert(0 && "Currently supported by the OvS-DPDK plugin");
 			throw OVSDBManagerException();
-			
+#endif
 			break;
 		case USVHOST_PORT:
+		{
 			row["type"] = "dpdkvhostuser";
 
-			// DPDK TODO: Delete socket to be sure ovs can create it!
-			
-			//XXX the next rows have to be removed when this plugin with support OvS-DPDK
+#ifdef ENABLE_OVSDB_DPDK
+			// Delete socket to be sure OVS can create it! (strange but needed)
+			stringstream prep_usvhost_cmd;
+			prep_usvhost_cmd << PREP_USVHOST_PORT << " " << port_name;
+			logger(ORCH_DEBUG_INFO, OVSDB_MODULE_NAME, __FILE__, __LINE__, "Executing command \"%s\"", prep_usvhost_cmd.str().c_str());
+			int retVal = system(prep_usvhost_cmd.str().c_str());
+			retVal = retVal >> 8;
+			if(retVal == 0) {
+				logger(ORCH_WARNING, OVSDB_MODULE_NAME, __FILE__, __LINE__, "Failed to prepare 'usvhost' port %s", port_name.c_str());
+				throw OVSDBManagerException();
+			}
+#else
 			logger(ORCH_WARNING, OVSDB_MODULE_NAME, __FILE__, __LINE__, "Currently supported by the OvS-DPDK plugin");
 			assert(0 && "Currently supported by the OvS-DPDK plugin");
 			throw OVSDBManagerException();
-			
+#endif
 			break;
+		}
 		case VETH_PORT:
 		{		
 			//In this case the veth pair needs to be created!

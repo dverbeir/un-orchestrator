@@ -96,6 +96,14 @@ IF(ENABLE_KVM-IVSHMEM)
 	ADD_DEFINITIONS(-DENABLE_KVM_IVSHMEM -DENABLE_KVM)
 ENDIF(ENABLE_KVM-IVSHMEM)
 
+OPTION(
+	ENABLE_OVSDB_DPDK
+	"Turn on to support OVS with DPDK netdev using the OVS-OVSDB netwrok controller plugin"
+	OFF
+)
+IF(ENABLE_OVSDB_DPDK)
+	ADD_DEFINITIONS(-DENABLE_OVSDB_DPDK)
+ENDIF(ENABLE_OVSDB_DPDK)
 #################################################################################################################
 
 OPTION(
@@ -479,20 +487,15 @@ IF(ENABLE_DPDK_PROCESSES AND ( (${VSWITCH_IMPLEMENTATION_INDEX} EQUAL 1) OR (${V
 	message(FATAL_ERROR "OvS not supported with Dpdk processes")
 ENDIF(ENABLE_DPDK_PROCESSES AND ( (${VSWITCH_IMPLEMENTATION_INDEX} EQUAL 1) OR (${VSWITCH_IMPLEMENTATION_INDEX} EQUAL 3) ) )
 
-IF(ENABLE_KVM-IVSHMEM AND ( (${VSWITCH_IMPLEMENTATION_INDEX} EQUAL 1) OR (${VSWITCH_IMPLEMENTATION_INDEX} EQUAL 3) ) )
-	#This configuration (ovs (ofconfig/ovsdb) + kvm-ivshmem) is not supported
-	message(FATAL_ERROR "OvS not supported with KVM-IVSHMEM")
-ENDIF(ENABLE_KVM-IVSHMEM AND ( (${VSWITCH_IMPLEMENTATION_INDEX} EQUAL 1) OR (${VSWITCH_IMPLEMENTATION_INDEX} EQUAL 3) ) )
+IF(ENABLE_KVM-IVSHMEM AND (${VSWITCH_IMPLEMENTATION_INDEX} EQUAL 1) )
+	#This configuration (ovs-ofconfig + kvm-ivshmem) is not supported
+	message(FATAL_ERROR "OVS-OFCONFIG not supported with KVM-IVSHMEM")
+ENDIF(ENABLE_KVM-IVSHMEM AND (${VSWITCH_IMPLEMENTATION_INDEX} EQUAL 1) )
 
 IF(ENABLE_KVM-IVSHMEM AND  (${VSWITCH_IMPLEMENTATION_INDEX} EQUAL 0) )
 	#This configuration (xdpd + kvm-ivshmem) is not supported
 	message(FATAL_ERROR "xDPd not supported with KVM-IVSHMEM")
 ENDIF(ENABLE_KVM-IVSHMEM AND  (${VSWITCH_IMPLEMENTATION_INDEX} EQUAL 0) )
-
-IF( (${VSWITCH_IMPLEMENTATION_INDEX} EQUAL 2) AND ENABLE_KVM AND ENABLE_DPDK_PROCESSES )
-	#In case of ovs-dpdk, dpdk processes and kvm (usvhost) cannot be supported at the same time
-	message(FATAL_ERROR "OvS-DPDK does not support DPDK processes and KVM at the same time")
-ENDIF( (${VSWITCH_IMPLEMENTATION_INDEX} EQUAL 2) AND ENABLE_KVM AND ENABLE_DPDK_PROCESSES )
 
 IF( (NOT ENABLE_DOCKER) AND (NOT ENABLE_DPDK_PROCESSES) AND (NOT ENABLE_KVM) AND (NOT ENABLE_KVM-IVSHMEM) )
 	#No execution environment is selected
