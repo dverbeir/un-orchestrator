@@ -283,7 +283,7 @@ bool Libvirt::startNF(StartNFIn sni)
 	/* Create XML for VM */
 
 	/* Create NICs */
-	vector<string> ivshmemPorts;
+	vector< pair<string, string> > ivshmemPorts; // name, alias
 
 	map<unsigned int, string> namesOfPortsOnTheSwitch = sni.getNamesOfPortsOnTheSwitch();
 	for(map<unsigned int, string>::iterator p = namesOfPortsOnTheSwitch.begin(); p != namesOfPortsOnTheSwitch.end(); p++)
@@ -318,7 +318,10 @@ bool Libvirt::startNF(StartNFIn sni)
 		    xmlNewProp(drv_guestn, BAD_CAST "ecn", BAD_CAST "off");
 	    }
 	    else if (port_type == IVSHMEM_PORT) {
-	    	ivshmemPorts.push_back(port_name);
+			ostringstream local_name;  // Name of the port as known by the VNF internally - We set a convention here
+			local_name << "p" << port_id;  // Will result in p<n>_tx and p<n>_rx rings
+
+			ivshmemPorts.push_back(pair<string, string>(port_name, local_name.str()));
 	    }
 	    else if (port_type == VHOST_PORT) {
 			xmlNodePtr ifn = xmlNewChild(devices, NULL, BAD_CAST "interface", NULL);
@@ -351,8 +354,8 @@ bool Libvirt::startNF(StartNFIn sni)
 
         ostringstream cmd;
         cmd << "group-ivshmems " << sni.getLsiID() << "." << sni.getNfName();
-        for (vector<string>::iterator it = ivshmemPorts.begin(); it != ivshmemPorts.end(); ++it) {
-            cmd << " IVSHMEM:" << sni.getLsiID() << "-" << *it;
+        for (vector< pair<string, string> >::iterator it = ivshmemPorts.begin(); it != ivshmemPorts.end(); ++it) {
+            cmd << " IVSHMEM:" << sni.getLsiID() << "-" << it->first;
         }
         logger(ORCH_DEBUG_INFO, MODULE_NAME, __FILE__, __LINE__, "Generating IVSHMEM QEMU command line using ERFS cmd: %s", cmd.str().c_str());
 
@@ -396,8 +399,8 @@ bool Libvirt::startNF(StartNFIn sni)
     	}
         ivshmemCmdElems.push_back(cmdline);
         // Port rings
-        for (vector<string>::iterator it = ivshmemPorts.begin(); it != ivshmemPorts.end(); ++it) {
-            if(!ivshmemCmdGenerator.get_port_cmdline((*it).c_str(), cmdline, sizeof(cmdline))) {
+        for (vector< pair<string,string> >::iterator it = ivshmemPorts.begin(); it != ivshmemPorts.end(); ++it) {
+            if(!ivshmemCmdGenerator.get_port_cmdline((it->first).c_str(), (it->second).c_str(), cmdline, sizeof(cmdline))) {
                 return false;
             }
             ivshmemCmdElems.push_back(cmdline);
